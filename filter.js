@@ -19,7 +19,9 @@ const entriesNo = process.argv[2] ? parseInt(process.argv[2]) : 10000;
 const fileName = `data_${entriesNo}.json`;
 
 if (!fs.existsSync(fileName)) {
-  console.error(`File "${fileName}" not found. Please choose another file.`);
+  console.error(
+    `File for ${entriesNo} entries not found. Please choose another number.`
+  );
   process.exit();
 }
 
@@ -37,6 +39,12 @@ const getIndex = (filterKey, filterVal) =>
     filterVal
   ];
 
+/**
+ * In this approach we get set of indexes for each filter property, and then find intersection of all the sets.
+ *
+ * Calc complexity - we iterate over each index set (to build hash map of occurrences),
+ * and then one additional time over set of ids found in any of the sets (to find ids occurring in all sets).
+ */
 const filterByIntersection = (filter) => {
   const indexesArr = Object.entries(filter).map(([filterKey, filterVal]) =>
     getIndex(filterKey, filterVal)
@@ -60,11 +68,11 @@ const filterByIntersection = (filter) => {
 
 /**
  * In this approach indexes are used for 2 purposes:
- *  1) based on the indexes length sort sets from the smallest to biggest
- *  2) get entries ids - but only from initial set (the smallest one)
+ *  1) based on the indexes length, sort sets from the smallest to biggest
+ *  2) get entries ids - but only for the initial set (the smallest one)
  *
- * For the last reduce collection starts from the smallest possible set and becomes smaller and smaller after each iteration
- * => thus reducing number of iterations needed
+ * Calc complexity - in the method's last reduce, collection starts from the smallest possible set and becomes
+ * smaller and smaller after each iteration => thus reducing number of iterations needed
  */
 const filterIteratively = (filter) => {
   const indexesMap = Object.entries(filter).reduce(
@@ -88,9 +96,13 @@ const filterIteratively = (filter) => {
     return initCollection;
   }
 
-  return filtersSortedFromSmallest.slice(1).reduce((col, filterKey) => {
-    return col.filter((item) => item[filterKey] === filter[filterKey]);
-  }, initCollection);
+  return filtersSortedFromSmallest
+    .slice(1)
+    .reduce(
+      (col, filterKey) =>
+        col.filter((item) => item[filterKey] === filter[filterKey]),
+      initCollection
+    );
 };
 
 const validateFilterResults = (resultArr) => {
