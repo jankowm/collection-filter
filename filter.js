@@ -17,7 +17,9 @@ const filterScenarios = [
 
 const RUN_REPEATS = 10;
 
-// load data
+/**
+ * ===== DATA LOADING =====
+ */
 const entriesNo = process.argv[2] ? parseInt(process.argv[2]) : 10000;
 const fileName = `data_${entriesNo}.json`;
 
@@ -29,6 +31,31 @@ if (!fs.existsSync(fileName)) {
 }
 
 const data = JSON.parse(fs.readFileSync(fileName, "utf8"));
+const dataWithHashIndex = {
+  collection: data.collection,
+};
+const dataWithMappedIndex = {
+  collection: data.collection,
+};
+
+Object.entries(data).forEach(([indexName, indexByValue]) => {
+  if (!indexName.startsWith("by")) {
+    return;
+  }
+
+  dataWithHashIndex[indexName] = {};
+  dataWithMappedIndex[indexName] = {};
+
+  Object.entries(indexByValue).forEach(([val, ids]) => {
+    dataWithHashIndex[indexName][val] = ids.reduce((idsHashed, id) => {
+      idsHashed[id] = true;
+      return idsHashed;
+    }, {});
+
+    dataWithMappedIndex[indexName][val] = new Map();
+    ids.forEach((id) => dataWithMappedIndex[indexName][val].set(id, true));
+  });
+});
 
 console.log(
   `Successfully loaded collection of ${
@@ -36,11 +63,21 @@ console.log(
   } entries`
 );
 
-//filtering
-const getIndex = (filterKey, filterVal) =>
-  data[`by${filterKey.charAt(0).toUpperCase() + filterKey.slice(1)}`][
-    filterVal
-  ];
+/**
+ * ===== FILTERING METHODS =====
+ */
+const getIndex = (filterKey, filterVal, dataInput) => {
+  const indexData =
+    dataInput === 1
+      ? dataWithHashIndex
+      : dataInput === 2
+      ? dataWithMappedIndex
+      : data;
+
+  return indexData[
+    `by${filterKey.charAt(0).toUpperCase() + filterKey.slice(1)}`
+  ][filterVal];
+};
 
 const resolveSingleFilter = (filter) => {
   return getIndex(Object.keys(filter)[0], Object.values(filter)[0]).map(
@@ -87,7 +124,7 @@ const filterByIntersection = (filter) => {
  * Calc complexity - in the method's last reduce, collection starts from the smallest possible set and becomes
  * smaller and smaller after each iteration => thus reducing number of iterations needed
  */
-const filterIteratively = (filter) => {
+const filterIterativelyCol = (filter) => {
   if (Object.keys(filter).length === 1) {
     return resolveSingleFilter(filter);
   }
@@ -118,6 +155,70 @@ const filterIteratively = (filter) => {
     );
 };
 
+const filterIterativelyIndexHash = (filter) => {
+  if (Object.keys(filter).length === 1) {
+    return resolveSingleFilter(filter);
+  }
+
+  const indexHashedMap = Object.entries(filter).reduce(
+    (acc, [filterKey, filterVal]) => {
+      acc[filterKey] = getIndex(filterKey, filterVal, 1);
+      return acc;
+    },
+    {}
+  );
+
+  const filtersSortedFromSmallest = Object.keys(indexHashedMap).sort(
+    (filterA, filterB) =>
+      Object.keys(indexHashedMap[filterA]).length -
+      Object.keys(indexHashedMap[filterB]).length
+  );
+
+  const initIds = Object.keys(indexHashedMap[filtersSortedFromSmallest[0]]);
+
+  return filtersSortedFromSmallest
+    .slice(1)
+    .reduce(
+      (ids, filterKey) => ids.filter((id) => indexHashedMap[filterKey][id]),
+      initIds
+    )
+    .map((id) => data.collection[id]);
+};
+
+const filterIterativelyIndexMap = (filter) => {
+  if (Object.keys(filter).length === 1) {
+    return resolveSingleFilter(filter);
+  }
+
+  const indexMappedMap = Object.entries(filter).reduce(
+    (acc, [filterKey, filterVal]) => {
+      acc[filterKey] = getIndex(filterKey, filterVal, 2);
+      return acc;
+    },
+    {}
+  );
+
+  const filtersSortedFromSmallest = Object.keys(indexMappedMap).sort(
+    (filterA, filterB) =>
+      indexMappedMap[filterA].size - indexMappedMap[filterB].size
+  );
+
+  const initIds = Array.from(
+    indexMappedMap[filtersSortedFromSmallest[0]].keys()
+  );
+
+  return filtersSortedFromSmallest
+    .slice(1)
+    .reduce(
+      (ids, filterKey) => ids.filter((id) => indexMappedMap[filterKey].has(id)),
+      initIds
+    )
+    .map((id) => data.collection[id]);
+};
+
+/**
+ * ===== RUN SCENARIOS =====
+ */
 const validateFilterResults = (resultArr) => {
   const resultIds = resultArr.map((resultCol) =>
     resultCol.map((entry) => entry && entry.id).sort()
@@ -174,12 +275,29 @@ const runScenario = (filter) => {
   );
 
   const iterativeResult = runFilterMultipleTimes(
-    filterIteratively,
+    filterIterativelyCol,
     filter,
-    "iterative"
+    "iterative-col"
   );
 
-  validateFilterResults([intersectionResult, iterativeResult]);
+  const mixedHashResult = runFilterMultipleTimes(
+    filterIterativelyIndexHash,
+    filter,
+    "iterative-index-hash"
+  );
+
+  const mixedMapResult = runFilterMultipleTimes(
+    filterIterativelyIndexMap,
+    filter,
+    "iterative-index-map"
+  );
+
+  validateFilterResults([
+    intersectionResult,
+    iterativeResult,
+    mixedHashResult,
+    mixedMapResult,
+  ]);
 };
 
 filterScenarios.forEach((filter) => {
