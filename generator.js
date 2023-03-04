@@ -18,7 +18,7 @@ const byCity = initIndex(orderCity);
 const byDelivery = initIndex(deliveryCompany);
 
 // execution
-const entriesNo = process.argv[2] ? parseInt(process.argv[2]) : 100;
+const entriesNo = process.argv[2] ? parseInt(process.argv[2]) : 10000;
 
 for (let id = 0; id < entriesNo; id++) {
   const entry = {
@@ -34,7 +34,7 @@ for (let id = 0; id < entriesNo; id++) {
   byDelivery[entry.delivery].push(id);
 }
 
-console.log("saving collection of ${entriesNo} entries...");
+console.log(`saving collection of ${entriesNo} entries...`);
 
 const fileName = `data_${entriesNo}.json`;
 fs.writeFileSync(

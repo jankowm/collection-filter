@@ -1,12 +1,12 @@
 # collection-filter
-Comparison of collection filtering methods
+Comparison of objects collection filtering methods
 
 ## How to use
  * generate data collection
    ```
-   node generator [number_of_entries]
+   node generator.js [number_of_entries || 10000]
    ```
  * run filter scenarios
    ```
-   node filter
+   node filter.js [number_of_entries || 10000]
    ```
