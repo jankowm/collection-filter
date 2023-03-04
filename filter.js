@@ -158,9 +158,8 @@ const runFilterMultipleTimes = (filterFn, filter, methodName) => {
     filterResult = filterFn(filter);
   }
   timer = process.hrtime(timer);
-  const avgTimeMs =
-    (timer[0] * 1000 + Math.floor(timer[1] / 1000)) / 1000 / RUN_REPEATS;
-  console.log(` - ${methodName} - avg: ${avgTimeMs}ms`);
+  const avgTimeMs = (timer[0] * 1000 + timer[1] / 1000000) / RUN_REPEATS;
+  console.log(` - ${methodName} - avg: ${avgTimeMs.toFixed(1)}ms`);
 
   return filterResult;
 };
