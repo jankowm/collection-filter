@@ -5,14 +5,17 @@ const filterScenarios = [
     status: "ACTIVE",
   },
   {
-    city: "Wroclaw",
+    status: "ERROR",
+    delivery: "FedEx",
   },
   {
-    status: "ACTIVE",
+    status: "IN_PROGRESS",
     city: "Wroclaw",
     delivery: "DPD",
   },
 ];
+
+const RUN_REPEATS = 10;
 
 // load data
 const entriesNo = process.argv[2] ? parseInt(process.argv[2]) : 10000;
@@ -39,6 +42,12 @@ const getIndex = (filterKey, filterVal) =>
     filterVal
   ];
 
+const resolveSingleFilter = (filter) => {
+  return getIndex(Object.keys(filter)[0], Object.values(filter)[0]).map(
+    (id) => data.collection[id]
+  );
+};
+
 /**
  * In this approach we get set of indexes for each filter property, and then find intersection of all the sets.
  *
@@ -46,6 +55,10 @@ const getIndex = (filterKey, filterVal) =>
  * and then one additional time over set of ids found in any of the sets (to find ids occurring in all sets).
  */
 const filterByIntersection = (filter) => {
+  if (Object.keys(filter).length === 1) {
+    return resolveSingleFilter(filter);
+  }
+
   const indexesArr = Object.entries(filter).map(([filterKey, filterVal]) =>
     getIndex(filterKey, filterVal)
   );
@@ -75,6 +88,10 @@ const filterByIntersection = (filter) => {
  * smaller and smaller after each iteration => thus reducing number of iterations needed
  */
 const filterIteratively = (filter) => {
+  if (Object.keys(filter).length === 1) {
+    return resolveSingleFilter(filter);
+  }
+
   const indexesMap = Object.entries(filter).reduce(
     (acc, [filterKey, filterVal]) => {
       acc[filterKey] = getIndex(filterKey, filterVal);
@@ -92,10 +109,6 @@ const filterIteratively = (filter) => {
     (id) => data.collection[id]
   );
 
-  if (filtersSortedFromSmallest.length === 1) {
-    return initCollection;
-  }
-
   return filtersSortedFromSmallest
     .slice(1)
     .reduce(
@@ -107,12 +120,12 @@ const filterIteratively = (filter) => {
 
 const validateFilterResults = (resultArr) => {
   const resultIds = resultArr.map((resultCol) =>
-    resultCol.map(({ id }) => id).sort()
+    resultCol.map((entry) => entry && entry.id).sort()
   );
 
-  try {
-    const entriesLength = resultIds[0].length;
+  const entriesLength = resultIds[0].length;
 
+  try {
     resultIds.forEach((idArr) => {
       if (entriesLength !== idArr.length) throw new Error("different length");
     });
@@ -125,23 +138,47 @@ const validateFilterResults = (resultArr) => {
       }
     }
 
-    console.log("valid: OK");
+    console.log(`valid: OK (${resultArr[0].length} results)`);
   } catch (e) {
     console.error("ERROR: Results validation FAILED!", e.message);
     console.log("resultIds", resultIds);
   }
 };
 
+const runFilterMultipleTimes = (filterFn, filter, methodName) => {
+  let filterResult = null;
+
+  //warm up
+  for (let i = 0; i < RUN_REPEATS; i++) {
+    filterResult = filterFn(filter);
+  }
+
+  let timer = process.hrtime();
+  for (let i = 0; i < RUN_REPEATS; i++) {
+    filterResult = filterFn(filter);
+  }
+  timer = process.hrtime(timer);
+  const avgTimeMs =
+    (timer[0] * 1000 + Math.floor(timer[1] / 1000)) / 1000 / RUN_REPEATS;
+  console.log(` - ${methodName} - avg: ${avgTimeMs}ms`);
+
+  return filterResult;
+};
+
 const runScenario = (filter) => {
   console.log(`===== running filter scenario: ${JSON.stringify(filter)}`);
 
-  console.time(" - intersection");
-  const intersectionResult = filterByIntersection(filter);
-  console.timeEnd(" - intersection");
+  const intersectionResult = runFilterMultipleTimes(
+    filterByIntersection,
+    filter,
+    "intersection"
+  );
 
-  console.time(" - iterative");
-  const iterativeResult = filterIteratively(filter);
-  console.timeEnd(" - iterative");
+  const iterativeResult = runFilterMultipleTimes(
+    filterIteratively,
+    filter,
+    "iterative"
+  );
 
   validateFilterResults([intersectionResult, iterativeResult]);
 };
