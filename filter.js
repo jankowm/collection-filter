@@ -1,5 +1,6 @@
 const fs = require("fs");
 const { buildIndexes } = require("./buildIndexes");
+const { testPerformance } = require("./performance");
 
 let data = {
   collection: {},
@@ -306,6 +307,29 @@ const filterIterativelyIndexSet = (filter) => {
 /**
  * ===== RUN SCENARIOS =====
  */
+const filterScenarios = [
+  {
+    status: "ACTIVE",
+  },
+  {
+    status: ["ACTIVE", "IN_PROGRESS", "DELIVERED"],
+  },
+  {
+    status: "ERROR",
+    delivery: "FedEx",
+  },
+  {
+    status: "IN_PROGRESS",
+    city: "Wroclaw",
+    delivery: "DPD",
+  },
+  {
+    status: ["ACTIVE", "IN_PROGRESS", "DELIVERED"],
+    city: "Warszawa",
+    delivery: "InPost",
+  },
+];
+
 const validateFilterResults = (resultArr) => {
   const resultIds = resultArr.map((resultCol) =>
     resultCol.map((entry) => entry && entry.id).sort()
@@ -333,85 +357,54 @@ const validateFilterResults = (resultArr) => {
   }
 };
 
-const runFilterMultipleTimes = (filterFn, filter, methodName) => {
-  let filterResult = null;
-
-  //warm up
-  for (let i = 0; i < CONFIG.methodWarmUpRepeats; i++) {
-    filterResult = filterFn(filter);
-  }
-
-  let timer = process.hrtime();
-  for (let i = 0; i < CONFIG.methodRunRepeats; i++) {
-    filterResult = filterFn(filter);
-  }
-  timer = process.hrtime(timer);
-  const avgTimeMs =
-    (timer[0] * 1000 + timer[1] / 1000000) / CONFIG.methodRunRepeats;
-  console.log(` - ${methodName} - avg: ${avgTimeMs.toFixed(1)}ms`);
-
-  return filterResult;
-};
-
-const filterScenarios = [
-  {
-    status: "ACTIVE",
-  },
-  {
-    status: ["ACTIVE", "IN_PROGRESS", "DELIVERED"],
-  },
-  {
-    status: "ERROR",
-    delivery: "FedEx",
-  },
-  {
-    status: "IN_PROGRESS",
-    city: "Wroclaw",
-    delivery: "DPD",
-  },
-  {
-    status: ["ACTIVE", "IN_PROGRESS", "DELIVERED"],
-    city: "Warszawa",
-    delivery: "InPost",
-  },
-];
-
 const runScenario = (filter) => {
   console.log(`===== running filter scenario: ${JSON.stringify(filter)}`);
 
-  const intersectionResult = runFilterMultipleTimes(
-    filterByIntersection,
-    filter,
-    "intersection"
-  );
+  const repeatsConfig = {
+    warmUpRepeats: CONFIG.methodWarmUpRepeats,
+    runRepeats: CONFIG.methodRunRepeats,
+  };
 
-  const iterativePojoResult = runFilterMultipleTimes(
-    filterIterativelyIndexPojo,
-    filter,
-    "iterative-index-pojo"
-  );
+  const { result: intersectionResult, time: intersectionTime } =
+    testPerformance({
+      fn: filterByIntersection.bind(null, filter),
+      ...repeatsConfig,
+    });
 
-  const iterativeResult = runFilterMultipleTimes(
-    filterIterativelyCol,
-    filter,
-    "iterative-collection"
-  );
-  const iterativeMapResult = runFilterMultipleTimes(
-    filterIterativelyIndexMap,
-    filter,
-    "iterative-index-map"
-  );
+  const { result: iterativeColResult, time: iterativeColTime } =
+    testPerformance({
+      fn: filterIterativelyCol.bind(null, filter),
+      ...repeatsConfig,
+    });
 
-  const iterativeSetResult = runFilterMultipleTimes(
-    filterIterativelyIndexSet,
-    filter,
-    "iterative-index-set"
-  );
+  const { result: iterativePojoResult, time: iterativePojoTime } =
+    testPerformance({
+      fn: filterIterativelyIndexPojo.bind(null, filter),
+      ...repeatsConfig,
+    });
+
+  const { result: iterativeMapResult, time: iterativeMapTime } =
+    testPerformance({
+      fn: filterIterativelyIndexMap.bind(null, filter),
+      ...repeatsConfig,
+    });
+
+  const { result: iterativeSetResult, time: iterativeSetTime } =
+    testPerformance({
+      fn: filterIterativelyIndexSet.bind(null, filter),
+      ...repeatsConfig,
+    });
+
+  console.log(` - intersection - avg: ${intersectionTime.toFixed(1)}ms`);
+  console.log(` - iter-collection - avg: ${iterativeColTime.toFixed(1)}ms`);
+  console.log(` - iter-index-pojo - avg: ${iterativePojoTime.toFixed(1)}ms`);
+  console.log(` - iter-index-map - avg: ${iterativeMapTime.toFixed(1)}ms`);
+  console.log(` - iter-index-set - avg: ${iterativeSetTime.toFixed(1)}ms`);
 
   validateFilterResults([
     intersectionResult,
     iterativePojoResult,
-    iterativeResult,
+    iterativeColResult,
     iterativeMapResult,
     iterativeSetResult,
   ]);
