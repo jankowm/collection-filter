@@ -2,13 +2,18 @@
 Comparison of objects collection filtering methods
 
 ## How to use
+ * install packages
+   ```
+   npm install
+   ```
+
  * generate data collection
    ```
-   node generator.js [number_of_entries || 10000]
+   node generator [number_of_entries || 10000]
    ```
  * run filter scenarios
    ```
-   node filter.js [number_of_entries || 10000]
+   node run [number_of_entries || 10000]
    ```
    
 ## Metody filtrowania
@@ -62,14 +67,19 @@ const indexes = {
    Sprawdzamy tylko czy ostatni pozostały element (`id=1`) jest w indeksie `'DPD'` (jest) => `ids = [1]`
 
 ## Wyniki
-![image](https://user-images.githubusercontent.com/93375448/222936220-65254207-3a21-4216-9ffb-949ec503e879.png)
+
+### 300K collection
+![result_300K](https://user-images.githubusercontent.com/93375448/222975852-13e515e7-7dd7-477a-8b03-4d46d85eaba3.png)
 
 ### Wnioseczki
+- ten pierwotny sposób `iterative-collection` wcale nie był taki zły jak myślałem.
+  O dziwo porównanie stringa w logice filtra często okazało się szybsze niż sprawdzenie czy w hashmapie jest dany klucz 😱
+  (ciekawe czy taki sam byłby rezultat przy zastosowaniu bardziej skomplikowanej logiki w filtrach)
+  Ten sposób wydajnością ciągle był na czele i próbowałem pozostałymi rozwiązaniami do niego dorównać.
+  Teraz Map/Set są porównywalne, a nawet czasem lepsze.
 - szukanie klucza w hash mapie stworzonej ze zwykłego obiektu jest dużo gorsze niż przy użyciu Map/Set
   (czyt. `obj[key]` jest wolniejsze niż `map.has(key)`)
 - multiple choice filters - merdżowanie zbiorów wartości to czasochłonny proces (np. Map/Set dużo traciły na tym do iterative-collection).
   Zamiast merdżowania przechowuję listę map i sprawdzam w każdej z nich. Kod jest brzydszy, ale bez tego wydajność spada tragicznie.
   Może pomogłoby to również w przypadku intersekcji (nie zaimplementowałem w ten sposób).
-- ten pierwotny sposób `iterative-collection` wcale nie był taki zły jak myślałem.
-  Ciągle był na czele i próbowałem pozostałymi rozwiązaniami do niego dorównać.
-  Teraz Map/Set są porównywalne, a nawet czasem lepsze.
+
