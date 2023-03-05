@@ -11,9 +11,17 @@ Comparison of objects collection filtering methods
    node filter.js [number_of_entries || 10000]
    ```
    
-## Wyjaśnienia i wnioseczki
-### iterative solution vs. iterative-pojo/-map/-set
-Chodzi o to, że w moim rozwiązaniu zaczynałem iterowanie od najmniejszego zbioru id-ków i stopniowo zmniejszałem jego wielkość filtrując go na kolejnych krokach.
+## Metody filtrowania
+ * `intersection` - z indeksów filtrów odczytujemy tablice id-ków. Potem przechodzimy przez te tablicy i zapisujemy częstotliwość występowania id-ków. Na koniec zostają tylko te id-ki, które występują we wszystkich tablicach.
+ * `iterative-collection` - w celu redukcji liczby iteracji najpierw sprawdzamy, który ze zbiorów id-ków jest najmniejszy. Przyjmujemy go jako zbiór wyjściowy. Dla wszystkich id-ków ładujemy pełne dane obiektów. Potem iterujemy po zbiorze i sprawdzamy czy obiekty spełniają warunki pozostałych filtrów. Za kazdym razem zbiór się stopniowo zmniejsza.
+ * `iterative-index` - założenie takie samo jak przy `-collection`. Różni się tylko sposobem filtrowania zbioru id-ków na kolejnych poziomach. Zamiast ładować pełne dane obiektów i porównywać je z wartościami filtrów (duplikacja logiki filtrowania - raz dla indeksu, drugi raz podczas pobrania danych) sprawdzamy czy dany id znajduje się w zbiorze odpowiedniego filtru.
+Takie użycie wymaga aby zbiory filtrów były zapisane w postaci hash mapy zamiast tablicy (łatwe sprawdzenie obecności elementu). Poszczególne warianty poniżej różnia się strukturą, która przechowuje dane indeksu.
+   * `iterative-index-pojo` - korzysta z prostego obiektu JS
+   * `iterative-index-map` - używa `Map`
+   * `iterative-index-set` - używa `Set`
+ 
+### iterative solution vs. iterative-index-pojo/-map/-set
+W iterative solution zaczynałem iterowanie od najmniejszego zbioru id-ków i stopniowo zmniejszałem jego wielkość filtrując go na kolejnych krokach.
 Żeby móc przefiltrować zbiór na kolejnych krokach uznałem, że nie wystarczy mi sama informacja o id (którą dostawałem z indeksu).
 Dlatego wyciągnąłem pełną informację o obiekcie i filtrowałem "na żywca", porównując parametry obiektu z wartościami kolejnych filtrów.
 W ten sposób duplikowałem funkcjonalność filtrowania (a czyż informacja o wszystkich filtrowaniach nie jest zapisana już w indeksie?).
@@ -26,7 +34,7 @@ to żeby znaleźć szukane id potencjalnie muszę przeszukać całą tablicę.
 Ale jeśli wartość indeksu to hash mapa (`{ byStatus: { ACTIVE: {1: true,...} } }`),
 to mogę błyskawicznie sprawdzić czy dany id jest w danym indeksie.
 
-#### Przykład
+### Przykład dla metod `iterative-index-*`
 **Dane wejściowe**
 ```js
 // filter
@@ -52,6 +60,9 @@ const indexes = {
    Listę id filtrujemy tak, żeby zostały tylko id-ki, które są w indeksie `'ACTIVE'`. => `ids = [1]`
  - poziom 2: został ostatni, najwiekszy zbiór (`'DPD'`).
    Sprawdzamy tylko czy ostatni pozostały element (`id=1`) jest w indeksie `'DPD'` (jest) => `ids = [1]`
+
+## Wyniki
+![image](https://user-images.githubusercontent.com/93375448/222936220-65254207-3a21-4216-9ffb-949ec503e879.png)
 
 ### Wnioseczki
 - szukanie klucza w hash mapie stworzonej ze zwykłego obiektu jest dużo gorsze niż przy użyciu Map/Set
