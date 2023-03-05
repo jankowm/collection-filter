@@ -1,44 +1,26 @@
 const fs = require("fs");
+const { buildIndexes } = require("./buildIndexes");
 
-const filterScenarios = [
-  {
-    status: "ACTIVE",
-  },
-  {
-    status: ["ACTIVE", "IN_PROGRESS", "DELIVERED"],
-  },
-  {
-    status: "ERROR",
-    delivery: "FedEx",
-  },
-  {
-    status: "IN_PROGRESS",
-    city: "Wroclaw",
-    delivery: "DPD",
-  },
-  {
-    status: ["ACTIVE", "IN_PROGRESS", "DELIVERED"],
-    city: "Warszawa",
-    delivery: "InPost",
-  },
-];
+const CONFIG = {
+  buildIndexRepeats: 10,
 
-const RUN_REPEATS = 10;
+  methodWarmUpRepeats: 0,
+  methodRunRepeats: 10,
+};
 
-/**
- * ===== DATA LOADING =====
- */
+// build indexes
 const entriesNo = process.argv[2] ? parseInt(process.argv[2]) : 10000;
 const fileName = `data_${entriesNo}.json`;
-
 if (!fs.existsSync(fileName)) {
   console.error(
     `File for ${entriesNo} entries not found. Please choose another number.`
   );
   process.exit();
 }
+let data = JSON.parse(fs.readFileSync(fileName, "utf8"));
 
-const data = JSON.parse(fs.readFileSync(fileName, "utf8"));
+data = { ...data, ...buildIndexes(data.collection) };
+
 const dataWithHashIndex = {
   collection: data.collection,
 };
@@ -48,6 +30,45 @@ const dataWithMappedIndex = {
 const dataWithSetIndex = {
   collection: data.collection,
 };
+
+/**
+ * ===== DATA LOADING =====
+ */
+
+Object.entries(data).forEach(([indexName, indexByValue]) => {
+  if (!indexName.startsWith("by")) {
+    return;
+  }
+
+  dataWithHashIndex[indexName] = {};
+  dataWithMappedIndex[indexName] = {};
+  dataWithSetIndex[indexName] = {};
+
+  Object.entries(indexByValue).forEach(([val, ids]) => {
+    dataWithHashIndex[indexName][val] = ids.reduce((idsHashed, id) => {
+      idsHashed[id] = true;
+      return idsHashed;
+    }, {});
+
+    dataWithMappedIndex[indexName][val] = new Map();
+    dataWithSetIndex[indexName][val] = new Set();
+
+    ids.forEach((id) => {
+      dataWithMappedIndex[indexName][val].set(id, true);
+      dataWithSetIndex[indexName][val].add(id);
+    });
+  });
+});
+
+console.log(
+  `Successfully loaded collection of ${
+    Object.keys(data.collection).length
+  } entries`
+);
+
+/**
+ * ===== DATA LOADING =====
+ */
 
 Object.entries(data).forEach(([indexName, indexByValue]) => {
   if (!indexName.startsWith("by")) {
@@ -123,7 +144,7 @@ const getIndex = (filterKey, filterVal, dataInput) => {
   }
 };
 
-const resolveSingleFilter = (filter) => {
+const resolveSingleFilter = (filter, dataInput) => {
   const [[filterKey, filterVal]] = Object.entries(filter);
 
   const values = !Array.isArray(filterVal) ? [filterVal] : filterVal;
@@ -366,20 +387,44 @@ const runFilterMultipleTimes = (filterFn, filter, methodName) => {
   let filterResult = null;
 
   //warm up
-  for (let i = 0; i < RUN_REPEATS; i++) {
+  for (let i = 0; i < CONFIG.methodWarmUpRepeats; i++) {
     filterResult = filterFn(filter);
   }
 
   let timer = process.hrtime();
-  for (let i = 0; i < RUN_REPEATS; i++) {
+  for (let i = 0; i < CONFIG.methodRunRepeats; i++) {
     filterResult = filterFn(filter);
   }
   timer = process.hrtime(timer);
-  const avgTimeMs = (timer[0] * 1000 + timer[1] / 1000000) / RUN_REPEATS;
+  const avgTimeMs =
+    (timer[0] * 1000 + timer[1] / 1000000) / CONFIG.methodRunRepeats;
   console.log(` - ${methodName} - avg: ${avgTimeMs.toFixed(1)}ms`);
 
   return filterResult;
 };
+
+const filterScenarios = [
+  {
+    status: "ACTIVE",
+  },
+  {
+    status: ["ACTIVE", "IN_PROGRESS", "DELIVERED"],
+  },
+  {
+    status: "ERROR",
+    delivery: "FedEx",
+  },
+  {
+    status: "IN_PROGRESS",
+    city: "Wroclaw",
+    delivery: "DPD",
+  },
+  {
+    status: ["ACTIVE", "IN_PROGRESS", "DELIVERED"],
+    city: "Warszawa",
+    delivery: "InPost",
+  },
+];
 
 const runScenario = (filter) => {
   console.log(`===== running filter scenario: ${JSON.stringify(filter)}`);
