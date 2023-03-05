@@ -20,6 +20,9 @@ const testPerformance = ({ fn, warmUpRepeats, runRepeats }) => {
   };
 };
 
+const printTime = (time) => `${time.toFixed(1)}ms`;
+
 module.exports = {
   testPerformance,
+  printTime,
 };

@@ -1,11 +1,12 @@
 const fs = require("fs");
+const { table } = require("table");
 const {
   buildIndexArr,
   buildIndexPojo,
   buildIndexMap,
   buildIndexSet,
 } = require("./buildIndexes");
-const { testPerformance } = require("./performance");
+const { testPerformance, printTime } = require("./performance");
 const {
   CONTROL_RUN,
   filterIntersection,
@@ -51,6 +52,11 @@ const filterScenarios = [
     city: "Warszawa",
     delivery: "InPost",
   },
+  {
+    status: ["ACTIVE", "IN_PROGRESS", "DELIVERED"],
+    city: ["Krakow", "Gdynia", "Szczecin"],
+    delivery: ["InPost", "Pocztex", "UPS"],
+  },
 ];
 
 // load data
@@ -79,12 +85,7 @@ const loadData = () => {
 /**
  * INDEXES
  */
-const indexTime = {
-  arr: 0,
-  pojo: 0,
-  map: 0,
-  set: 0,
-};
+let indexTime = null;
 
 const runIndexesTest = () => {
   console.log(`===== INDEXES =====`);
@@ -125,6 +126,13 @@ const runIndexesTest = () => {
     indexPojo: pojoTest.result,
     indexMap: mapTest.result,
     indexSet: setTest.result,
+  };
+
+  indexTime = {
+    arr: arrTest.time,
+    pojo: pojoTest.time,
+    map: mapTest.time,
+    set: setTest.time,
   };
 };
 
@@ -179,35 +187,66 @@ const runFilterScenario = (filter) => {
       fn: filterIntersection.bind(null, { data, filter }),
       ...repeatsConfig,
     });
-  console.log(` - intersection: ${intersectionTime.toFixed(1)}ms`);
 
   const { result: iterativePojoResult, time: iterativePojoTime } =
     testPerformance({
       fn: filterIterativePojo.bind(null, { data, filter }),
       ...repeatsConfig,
     });
-  console.log(` - iter-index-pojo: ${iterativePojoTime.toFixed(1)}ms`);
 
   const { result: iterativeColResult, time: iterativeColTime } =
     testPerformance({
       fn: filterIterativeCol.bind(null, { data, filter }),
       ...repeatsConfig,
     });
-  console.log(` - iter-collection: ${iterativeColTime.toFixed(1)}ms`);
 
   const { result: iterativeMapResult, time: iterativeMapTime } =
     testPerformance({
       fn: filterIterativeMap.bind(null, { data, filter }),
       ...repeatsConfig,
     });
-  console.log(` - iter-index-map: ${iterativeMapTime.toFixed(1)}ms`);
 
   const { result: iterativeSetResult, time: iterativeSetTime } =
     testPerformance({
       fn: filterIterativeSet.bind(null, { data, filter }),
       ...repeatsConfig,
     });
-  console.log(` - iter-index-set: ${iterativeSetTime.toFixed(1)}ms`);
+
+  console.log(
+    table([
+      ["method", "filter", "index", "sum"],
+      [
+        "intersection",
+        printTime(intersectionTime),
+        printTime(indexTime.arr),
+        printTime(intersectionTime + indexTime.arr),
+      ],
+      [
+        "iter-index-pojo",
+        printTime(iterativePojoTime),
+        printTime(indexTime.pojo),
+        printTime(iterativePojoTime + indexTime.pojo),
+      ],
+      [
+        "iter-collection",
+        printTime(iterativeColTime),
+        printTime(indexTime.arr),
+        printTime(iterativeColTime + indexTime.arr),
+      ],
+      [
+        "iter-index-map",
+        printTime(iterativeMapTime),
+        printTime(indexTime.map),
+        printTime(iterativeMapTime + indexTime.map),
+      ],
+      [
+        "iter-index-set",
+        printTime(iterativeSetTime),
+        printTime(indexTime.set),
+        printTime(iterativeSetTime + indexTime.set),
+      ],
+    ])
+  );
 
   validateFilterResults([
     intersectionResult,
@@ -219,6 +258,8 @@ const runFilterScenario = (filter) => {
 };
 
 (function run() {
+  console.time("process took");
+  console.log("CONFIG", JSON.stringify(CONFIG));
   loadData();
 
   // warm up
@@ -240,4 +281,7 @@ const runFilterScenario = (filter) => {
   filterScenarios.forEach((filter) => {
     runFilterScenario(filter);
   });
+
+  console.log("~~~~~~~~~~~~~~~~~~~~~~~~~~~");
+  console.timeEnd("process took");
 })();
