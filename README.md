@@ -68,8 +68,9 @@ const indexes = {
 
 ## Wyniki
 
-### 300K collection
-![result_300K](https://user-images.githubusercontent.com/93375448/222975852-13e515e7-7dd7-477a-8b03-4d46d85eaba3.png)
+| 300K collection  | 1 MIL collection |
+| ------------- | ------------- |
+| ![result_300K](https://user-images.githubusercontent.com/93375448/222975852-13e515e7-7dd7-477a-8b03-4d46d85eaba3.png)  | ![result_1mil](https://user-images.githubusercontent.com/93375448/222987175-fde2053b-d04b-444f-8f72-eeadabfd46c4.png)  |
 
 ### Wnioseczki
 - ten pierwotny sposób `iterative-collection` wcale nie był taki zły jak myślałem.
