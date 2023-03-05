@@ -1,14 +1,30 @@
 const fs = require("fs");
 const { buildIndexes } = require("./buildIndexes");
 
+let data = {
+  collection: {},
+  indexArr: {},
+  indexPojo: {},
+  indexMap: {},
+  indexSet: {},
+};
+
 const CONFIG = {
   buildIndexRepeats: 10,
 
-  methodWarmUpRepeats: 0,
+  methodWarmUpRepeats: 10,
   methodRunRepeats: 10,
 };
 
-// build indexes
+const METHOD = {
+  intersection: 1,
+  iterativeCol: 2,
+  iterativeIndexPojo: 3,
+  iterativeIndexMap: 4,
+  iterativeIndexSet: 5,
+};
+
+// load data
 const entriesNo = process.argv[2] ? parseInt(process.argv[2]) : 10000;
 const fileName = `data_${entriesNo}.json`;
 if (!fs.existsSync(fileName)) {
@@ -17,48 +33,7 @@ if (!fs.existsSync(fileName)) {
   );
   process.exit();
 }
-let data = JSON.parse(fs.readFileSync(fileName, "utf8"));
-
-data = { ...data, ...buildIndexes(data.collection) };
-
-const dataWithHashIndex = {
-  collection: data.collection,
-};
-const dataWithMappedIndex = {
-  collection: data.collection,
-};
-const dataWithSetIndex = {
-  collection: data.collection,
-};
-
-/**
- * ===== DATA LOADING =====
- */
-
-Object.entries(data).forEach(([indexName, indexByValue]) => {
-  if (!indexName.startsWith("by")) {
-    return;
-  }
-
-  dataWithHashIndex[indexName] = {};
-  dataWithMappedIndex[indexName] = {};
-  dataWithSetIndex[indexName] = {};
-
-  Object.entries(indexByValue).forEach(([val, ids]) => {
-    dataWithHashIndex[indexName][val] = ids.reduce((idsHashed, id) => {
-      idsHashed[id] = true;
-      return idsHashed;
-    }, {});
-
-    dataWithMappedIndex[indexName][val] = new Map();
-    dataWithSetIndex[indexName][val] = new Set();
-
-    ids.forEach((id) => {
-      dataWithMappedIndex[indexName][val].set(id, true);
-      dataWithSetIndex[indexName][val].add(id);
-    });
-  });
-});
+data = JSON.parse(fs.readFileSync(fileName, "utf8"));
 
 console.log(
   `Successfully loaded collection of ${
@@ -66,51 +41,26 @@ console.log(
   } entries`
 );
 
-/**
- * ===== DATA LOADING =====
- */
-
-Object.entries(data).forEach(([indexName, indexByValue]) => {
-  if (!indexName.startsWith("by")) {
-    return;
-  }
-
-  dataWithHashIndex[indexName] = {};
-  dataWithMappedIndex[indexName] = {};
-  dataWithSetIndex[indexName] = {};
-
-  Object.entries(indexByValue).forEach(([val, ids]) => {
-    dataWithHashIndex[indexName][val] = ids.reduce((idsHashed, id) => {
-      idsHashed[id] = true;
-      return idsHashed;
-    }, {});
-
-    dataWithMappedIndex[indexName][val] = new Map();
-    dataWithSetIndex[indexName][val] = new Set();
-
-    ids.forEach((id) => {
-      dataWithMappedIndex[indexName][val].set(id, true);
-      dataWithSetIndex[indexName][val].add(id);
-    });
-  });
-});
-
-console.log(
-  `Successfully loaded collection of ${
-    Object.keys(data.collection).length
-  } entries`
+// build indexes
+const { indexArr, indexPojo, indexMap, indexSet } = buildIndexes(
+  data.collection
 );
+
+data = { ...data, ...indexArr };
+const dataWithHashIndex = { ...data, ...indexPojo };
+const dataWithMappedIndex = { ...data, ...indexMap };
+const dataWithSetIndex = { ...data, ...indexSet };
 
 /**
  * ===== FILTERING METHODS =====
  */
-const getIndex = (filterKey, filterVal, dataInput) => {
+const getIndex = (filterKey, filterVal, method) => {
   const indexData =
-    dataInput === 1
+    method === 1
       ? dataWithHashIndex
-      : dataInput === 2
+      : method === 2
       ? dataWithMappedIndex
-      : dataInput === 3
+      : method === 3
       ? dataWithSetIndex
       : data;
 
@@ -123,7 +73,7 @@ const getIndex = (filterKey, filterVal, dataInput) => {
   }
 
   // POJO-based indexes
-  if (dataInput === 1) {
+  if (method === 1) {
     return filterVal.reduce(
       (acc, val) => ({ ...acc, ...indexData[filterName][val] }),
       {}
@@ -131,7 +81,7 @@ const getIndex = (filterKey, filterVal, dataInput) => {
   }
 
   // Map-/Set-based indexes => return array of map/set (since merging map/set is highly inefficient)
-  else if (dataInput === 2 || dataInput === 3) {
+  else if (method === 2 || method === 3) {
     return filterVal.map((val) => indexData[filterName][val]);
   }
 
