@@ -1,22 +1,3 @@
-const fs = require("fs");
-const { buildIndexes } = require("./buildIndexes");
-const { testPerformance } = require("./performance");
-
-let data = {
-  collection: {},
-  indexArr: {},
-  indexPojo: {},
-  indexMap: {},
-  indexSet: {},
-};
-
-const CONFIG = {
-  buildIndexRepeats: 10,
-
-  methodWarmUpRepeats: 10,
-  methodRunRepeats: 10,
-};
-
 const METHOD = {
   intersection: 1,
   iterativeCol: 2,
@@ -25,102 +6,91 @@ const METHOD = {
   iterativeIndexSet: 5,
 };
 
-// load data
-const entriesNo = process.argv[2] ? parseInt(process.argv[2]) : 10000;
-const fileName = `data_${entriesNo}.json`;
-if (!fs.existsSync(fileName)) {
-  console.error(
-    `File for ${entriesNo} entries not found. Please choose another number.`
-  );
-  process.exit();
-}
-data = JSON.parse(fs.readFileSync(fileName, "utf8"));
+// control - pass as filter value to run all tests with exactly same algorithm
+const CONTROL_RUN = "control-run";
 
-console.log(
-  `Successfully loaded collection of ${
-    Object.keys(data.collection).length
-  } entries`
-);
+const getIndexName = (filterKey) =>
+  `by${filterKey.charAt(0).toUpperCase() + filterKey.slice(1)}`;
 
-// build indexes
-const { indexArr, indexPojo, indexMap, indexSet } = buildIndexes(
-  data.collection
-);
+const getIndex = ({ filterKey, filterVal, index }) => {
+  const indexName = getIndexName(filterKey);
 
-data = { ...data, ...indexArr };
-const dataWithHashIndex = { ...data, ...indexPojo };
-const dataWithMappedIndex = { ...data, ...indexMap };
-const dataWithSetIndex = { ...data, ...indexSet };
-
-/**
- * ===== FILTERING METHODS =====
- */
-const getIndex = (filterKey, filterVal, method) => {
-  const indexData =
-    method === 1
-      ? dataWithHashIndex
-      : method === 2
-      ? dataWithMappedIndex
-      : method === 3
-      ? dataWithSetIndex
-      : data;
-
-  const filterName = `by${
-    filterKey.charAt(0).toUpperCase() + filterKey.slice(1)
-  }`;
-
-  if (!Array.isArray(filterVal)) {
-    return indexData[filterName][filterVal];
-  }
-
-  // POJO-based indexes
-  if (method === 1) {
-    return filterVal.reduce(
-      (acc, val) => ({ ...acc, ...indexData[filterName][val] }),
-      {}
-    );
-  }
-
-  // Map-/Set-based indexes => return array of map/set (since merging map/set is highly inefficient)
-  else if (method === 2 || method === 3) {
-    return filterVal.map((val) => indexData[filterName][val]);
-  }
-
-  // array-based indexes
-  else {
-    return [].concat.apply(
-      [],
-      filterVal.map((val) => indexData[filterName][val])
-    );
-  }
+  return Array.isArray(filterVal)
+    ? filterVal.map((val) => index[indexName][val])
+    : index[indexName][filterVal];
 };
 
-const resolveSingleFilter = (filter, dataInput) => {
-  const [[filterKey, filterVal]] = Object.entries(filter);
+const controlRun = (data) =>
+  resolveSingleFilterIndexArr({ filter: { status: "ACTIVE" }, data });
 
+/**
+ * Single filter resolvers
+ */
+const resolveSingleFilterIndexArr = ({ filter, data }) => {
+  const [[filterKey, filterVal]] = Object.entries(filter);
   const values = !Array.isArray(filterVal) ? [filterVal] : filterVal;
 
+  const indexName = getIndexName(filterKey);
+
   return values
-    .reduce((acc, val) => acc.concat(getIndex(filterKey, val)), [])
+    .map((val) => data.indexArr[indexName][val])
+    .reduce((acc, ids) => acc.concat(ids), [])
+    .map((id) => data.collection[id]);
+};
+
+const resolveSingleFilterIndexPojo = ({ filter, data }) => {
+  const [[filterKey, filterVal]] = Object.entries(filter);
+  const values = !Array.isArray(filterVal) ? [filterVal] : filterVal;
+  const indexName = getIndexName(filterKey);
+
+  return values
+    .map((val) => Object.keys(data.indexPojo[indexName][val]))
+    .reduce((acc, ids) => acc.concat(ids), [])
+    .map((id) => data.collection[id]);
+};
+
+const resolveSingleFilterIndexMap = ({ filter, data }) => {
+  const [[filterKey, filterVal]] = Object.entries(filter);
+  const values = !Array.isArray(filterVal) ? [filterVal] : filterVal;
+  const indexName = getIndexName(filterKey);
+
+  return values
+    .map((val) => Array.from(data.indexMap[indexName][val].keys()))
+    .reduce((acc, ids) => acc.concat(ids), [])
+    .map((id) => data.collection[id]);
+};
+
+const resolveSingleFilterIndexSet = ({ filter, data }) => {
+  const [[filterKey, filterVal]] = Object.entries(filter);
+  const values = !Array.isArray(filterVal) ? [filterVal] : filterVal;
+  const indexName = getIndexName(filterKey);
+
+  return values
+    .map((val) => Array.from(data.indexSet[indexName][val]))
+    .reduce((acc, ids) => acc.concat(ids), [])
     .map((id) => data.collection[id]);
 };
 
 /**
- * In this approach we get set of indexes for each filter property, and then find intersection of all the sets.
- *
- * Calc complexity - we iterate over each index set (to build hash map of occurrences),
- * and then one additional time over set of ids found in any of the sets (to find ids occurring in all sets).
+ * Filter methods
  */
-const filterByIntersection = (filter) => {
-  if (Object.keys(filter).length === 1) {
-    return resolveSingleFilter(filter);
+const filterIntersection = ({ filter, data }) => {
+  if (filter === CONTROL_RUN) {
+    return controlRun(data);
   }
 
-  const indexesArr = Object.entries(filter).map(([filterKey, filterVal]) =>
-    getIndex(filterKey, filterVal)
+  if (Object.keys(filter).length === 1) {
+    return resolveSingleFilterIndexArr({ filter, data });
+  }
+
+  const filterIndexArr = Object.entries(filter).map(
+    ([filterKey, filterVal]) => {
+      const indexVal = getIndex({ filterKey, filterVal, index: data.indexArr });
+      return Array.isArray(indexVal) ? indexVal.flat() : indexVal;
+    }
   );
 
-  const intersectionCount = indexesArr.reduce((acc, index) => {
+  const intersectionCount = filterIndexArr.reduce((acc, index) => {
     index.forEach((id) => {
       if (!acc[id]) {
         acc[id] = 1;
@@ -132,39 +102,47 @@ const filterByIntersection = (filter) => {
   }, {});
 
   return Object.entries(intersectionCount)
-    .filter(([_, count]) => count === indexesArr.length)
+    .filter(([_, count]) => count === filterIndexArr.length)
     .map(([id]) => data.collection[id]);
 };
 
-/**
- * In this approach indexes are used for 2 purposes:
- *  1) based on the indexes length, sort sets from the smallest to biggest
- *  2) get entries ids - but only for the initial set (the smallest one)
- *
- * Calc complexity - in the method's last reduce, collection starts from the smallest possible set and becomes
- * smaller and smaller after each iteration => thus reducing number of iterations needed
- */
-const filterIterativelyCol = (filter) => {
-  if (Object.keys(filter).length === 1) {
-    return resolveSingleFilter(filter);
+const filterIterativeCol = ({ filter, data }) => {
+  if (filter === CONTROL_RUN) {
+    return controlRun(data);
   }
 
-  const indexesMap = Object.entries(filter).reduce(
+  if (Object.keys(filter).length === 1) {
+    return resolveSingleFilterIndexArr({ filter, data });
+  }
+
+  const filterIndexMap = Object.entries(filter).reduce(
     (acc, [filterKey, filterVal]) => {
-      acc[filterKey] = getIndex(filterKey, filterVal);
+      acc[filterKey] = getIndex({ filterKey, filterVal, index: data.indexArr });
       return acc;
     },
     {}
   );
 
-  const filtersSortedFromSmallest = Object.keys(indexesMap).sort(
-    (filterA, filterB) =>
-      indexesMap[filterA].length - indexesMap[filterB].length
+  const filtersSortedFromSmallest = Object.keys(filterIndexMap).sort(
+    (filterA, filterB) => {
+      const arrA = filterIndexMap[filterA];
+      const arrB = filterIndexMap[filterB];
+
+      const lengthA = Array.isArray(arrA)
+        ? arrA.reduce((acc, arr) => acc + arr.length, 0)
+        : arrA.length;
+      const lengthB = Array.isArray(arrB)
+        ? arrB.reduce((acc, arr) => acc + arr.length, 0)
+        : arrB.length;
+
+      return lengthA - lengthB;
+    }
   );
 
-  const initCollection = indexesMap[filtersSortedFromSmallest[0]].map(
-    (id) => data.collection[id]
-  );
+  const smallestIndexArr = filterIndexMap[filtersSortedFromSmallest[0]];
+  const initCollection = Array.isArray(smallestIndexArr)
+    ? smallestIndexArr.flat().map((id) => data.collection[id])
+    : smallestIndexArr.map((id) => data.collection[id]);
 
   return filtersSortedFromSmallest.slice(1).reduce((col, filterKey) => {
     const filterVal = filter[filterKey];
@@ -176,53 +154,83 @@ const filterIterativelyCol = (filter) => {
   }, initCollection);
 };
 
-const filterIterativelyIndexPojo = (filter) => {
-  if (Object.keys(filter).length === 1) {
-    return resolveSingleFilter(filter);
+const filterIterativePojo = ({ filter, data }) => {
+  if (filter === CONTROL_RUN) {
+    return controlRun(data);
   }
 
-  const indexHashedMap = Object.entries(filter).reduce(
+  if (Object.keys(filter).length === 1) {
+    return resolveSingleFilterIndexPojo({ filter, data });
+  }
+
+  const filterIndexMap = Object.entries(filter).reduce(
     (acc, [filterKey, filterVal]) => {
-      acc[filterKey] = getIndex(filterKey, filterVal, 1);
+      acc[filterKey] = getIndex({
+        filterKey,
+        filterVal,
+        index: data.indexPojo,
+      });
       return acc;
     },
     {}
   );
 
-  const filtersSortedFromSmallest = Object.keys(indexHashedMap).sort(
-    (filterA, filterB) =>
-      Object.keys(indexHashedMap[filterA]).length -
-      Object.keys(indexHashedMap[filterB]).length
+  const filtersSortedFromSmallest = Object.keys(filterIndexMap).sort(
+    (filterA, filterB) => {
+      const pojoA = filterIndexMap[filterA];
+      const pojoB = filterIndexMap[filterB];
+
+      const lengthA = Array.isArray(pojoA)
+        ? pojoA.reduce((acc, pojo) => acc + Object.keys(pojo).length, 0)
+        : Object.keys(pojoA);
+      const lengthB = Array.isArray(pojoB)
+        ? pojoB.reduce((acc, pojo) => acc + Object.keys(pojo).length, 0)
+        : Object.keys(pojoB);
+
+      return lengthA - lengthB;
+    }
   );
 
-  const initIds = Object.keys(indexHashedMap[filtersSortedFromSmallest[0]]);
+  const smallestIndexPojo = filterIndexMap[filtersSortedFromSmallest[0]];
+  const initIds = Array.isArray(smallestIndexPojo)
+    ? smallestIndexPojo.flatMap((pojo) => Object.keys(pojo))
+    : Object.keys(smallestIndexPojo);
 
   return filtersSortedFromSmallest
     .slice(1)
-    .reduce(
-      (ids, filterKey) => ids.filter((id) => indexHashedMap[filterKey][id]),
-      initIds
-    )
+    .reduce((ids, filterKey) => {
+      const pojos = filterIndexMap[filterKey];
+
+      return Array.isArray(pojos)
+        ? ids.filter((id) =>
+            pojos.reduce((acc, pojo) => acc || pojo[id], false)
+          )
+        : ids.filter((id) => pojos[id]);
+    }, initIds)
     .map((id) => data.collection[id]);
 };
 
-const filterIterativelyIndexMap = (filter) => {
-  if (Object.keys(filter).length === 1) {
-    return resolveSingleFilter(filter);
+const filterIterativeMap = ({ filter, data }) => {
+  if (filter === CONTROL_RUN) {
+    return controlRun(data);
   }
 
-  const indexMappedMap = Object.entries(filter).reduce(
+  if (Object.keys(filter).length === 1) {
+    return resolveSingleFilterIndexMap({ filter, data });
+  }
+
+  const filterIndexMap = Object.entries(filter).reduce(
     (acc, [filterKey, filterVal]) => {
-      acc[filterKey] = getIndex(filterKey, filterVal, 2);
+      acc[filterKey] = getIndex({ filterKey, filterVal, index: data.indexMap });
       return acc;
     },
     {}
   );
 
-  const filtersSortedFromSmallest = Object.keys(indexMappedMap).sort(
+  const filtersSortedFromSmallest = Object.keys(filterIndexMap).sort(
     (filterA, filterB) => {
-      const mapsA = indexMappedMap[filterA];
-      const mapsB = indexMappedMap[filterB];
+      const mapsA = filterIndexMap[filterA];
+      const mapsB = filterIndexMap[filterB];
 
       const sizeA = Array.isArray(mapsA)
         ? mapsA.reduce((acc, map) => acc + map.size, 0)
@@ -235,43 +243,46 @@ const filterIterativelyIndexMap = (filter) => {
     }
   );
 
-  const initIds = Array.from(
-    indexMappedMap[filtersSortedFromSmallest[0]].keys()
-  );
+  const smallestIndexMap = filterIndexMap[filtersSortedFromSmallest[0]];
+  const initIds = Array.isArray(smallestIndexMap)
+    ? smallestIndexMap.flatMap((map) => Array.from(map.keys()))
+    : Array.from(smallestIndexMap.keys());
 
   return filtersSortedFromSmallest
     .slice(1)
-    .reduce(
-      (ids, filterKey) =>
-        ids.filter((id) => {
-          const maps = indexMappedMap[filterKey];
+    .reduce((ids, filterKey) => {
+      const maps = filterIndexMap[filterKey];
 
-          return Array.isArray(maps)
-            ? maps.reduce((acc, map) => acc || map.has(id), false)
-            : maps.has(id);
-        }),
-      initIds
-    )
+      return Array.isArray(maps)
+        ? ids.filter((id) =>
+            maps.reduce((acc, map) => acc || map.has(id), false)
+          )
+        : ids.filter((id) => maps.has(id));
+    }, initIds)
     .map((id) => data.collection[id]);
 };
 
-const filterIterativelyIndexSet = (filter) => {
-  if (Object.keys(filter).length === 1) {
-    return resolveSingleFilter(filter);
+const filterIterativeSet = ({ filter, data }) => {
+  if (filter === CONTROL_RUN) {
+    return controlRun(data);
   }
 
-  const indexSetMap = Object.entries(filter).reduce(
+  if (Object.keys(filter).length === 1) {
+    return resolveSingleFilterIndexSet({ filter, data });
+  }
+
+  const filterIndexMap = Object.entries(filter).reduce(
     (acc, [filterKey, filterVal]) => {
-      acc[filterKey] = getIndex(filterKey, filterVal, 3);
+      acc[filterKey] = getIndex({ filterKey, filterVal, index: data.indexSet });
       return acc;
     },
     {}
   );
 
-  const filtersSortedFromSmallest = Object.keys(indexSetMap).sort(
+  const filtersSortedFromSmallest = Object.keys(filterIndexMap).sort(
     (filterA, filterB) => {
-      const setsA = indexSetMap[filterA];
-      const setsB = indexSetMap[filterB];
+      const setsA = filterIndexMap[filterA];
+      const setsB = filterIndexMap[filterB];
 
       const sizeA = Array.isArray(setsA)
         ? setsA.reduce((acc, set) => acc + set.size, 0)
@@ -284,132 +295,31 @@ const filterIterativelyIndexSet = (filter) => {
     }
   );
 
-  const initIds = Array.from(
-    indexSetMap[filtersSortedFromSmallest[0]].values()
-  );
+  const smallestIndexSet = filterIndexMap[filtersSortedFromSmallest[0]];
+  const initIds = Array.isArray(smallestIndexSet)
+    ? smallestIndexSet.flatMap((set) => Array.from(set.values()))
+    : Array.from(smallestIndexSet.values());
 
   return filtersSortedFromSmallest
     .slice(1)
-    .reduce(
-      (ids, filterKey) =>
-        ids.filter((id) => {
-          const sets = indexSetMap[filterKey];
+    .reduce((ids, filterKey) => {
+      const sets = filterIndexMap[filterKey];
 
-          return Array.isArray(sets)
-            ? sets.reduce((acc, set) => acc || set.has(id), false)
-            : sets.has(id);
-        }),
-      initIds
-    )
+      return Array.isArray(sets)
+        ? ids.filter((id) =>
+            sets.reduce((acc, set) => acc || set.has(id), false)
+          )
+        : ids.filter((id) => sets.has(id));
+    }, initIds)
     .map((id) => data.collection[id]);
 };
 
-/**
- * ===== RUN SCENARIOS =====
- */
-const filterScenarios = [
-  {
-    status: "ACTIVE",
-  },
-  {
-    status: ["ACTIVE", "IN_PROGRESS", "DELIVERED"],
-  },
-  {
-    status: "ERROR",
-    delivery: "FedEx",
-  },
-  {
-    status: "IN_PROGRESS",
-    city: "Wroclaw",
-    delivery: "DPD",
-  },
-  {
-    status: ["ACTIVE", "IN_PROGRESS", "DELIVERED"],
-    city: "Warszawa",
-    delivery: "InPost",
-  },
-];
+module.exports = {
+  CONTROL_RUN,
 
-const validateFilterResults = (resultArr) => {
-  const resultIds = resultArr.map((resultCol) =>
-    resultCol.map((entry) => entry && entry.id).sort()
-  );
-
-  const entriesLength = resultIds[0].length;
-
-  try {
-    resultIds.forEach((idArr) => {
-      if (entriesLength !== idArr.length) throw new Error("different length");
-    });
-
-    for (let entryIndex = 0; entryIndex < entriesLength; entryIndex++) {
-      for (let resultIndex = 1; resultIndex < resultArr.length; resultIndex++) {
-        if (resultArr[0][entryIndex] !== resultArr[resultIndex][entryIndex]) {
-          throw new Error("different id");
-        }
-      }
-    }
-
-    console.log(`valid: OK (${resultArr[0].length} results)`);
-  } catch (e) {
-    console.error("ERROR: Results validation FAILED!", e.message);
-    console.log("resultIds", resultIds);
-  }
+  filterIntersection,
+  filterIterativeCol,
+  filterIterativePojo,
+  filterIterativeMap,
+  filterIterativeSet,
 };
-
-const runScenario = (filter) => {
-  console.log(`===== running filter scenario: ${JSON.stringify(filter)}`);
-
-  const repeatsConfig = {
-    warmUpRepeats: CONFIG.methodWarmUpRepeats,
-    runRepeats: CONFIG.methodRunRepeats,
-  };
-
-  const { result: intersectionResult, time: intersectionTime } =
-    testPerformance({
-      fn: filterByIntersection.bind(null, filter),
-      ...repeatsConfig,
-    });
-
-  const { result: iterativeColResult, time: iterativeColTime } =
-    testPerformance({
-      fn: filterIterativelyCol.bind(null, filter),
-      ...repeatsConfig,
-    });
-
-  const { result: iterativePojoResult, time: iterativePojoTime } =
-    testPerformance({
-      fn: filterIterativelyIndexPojo.bind(null, filter),
-      ...repeatsConfig,
-    });
-
-  const { result: iterativeMapResult, time: iterativeMapTime } =
-    testPerformance({
-      fn: filterIterativelyIndexMap.bind(null, filter),
-      ...repeatsConfig,
-    });
-
-  const { result: iterativeSetResult, time: iterativeSetTime } =
-    testPerformance({
-      fn: filterIterativelyIndexSet.bind(null, filter),
-      ...repeatsConfig,
-    });
-
-  console.log(` - intersection - avg: ${intersectionTime.toFixed(1)}ms`);
-  console.log(` - iter-collection - avg: ${iterativeColTime.toFixed(1)}ms`);
-  console.log(` - iter-index-pojo - avg: ${iterativePojoTime.toFixed(1)}ms`);
-  console.log(` - iter-index-map - avg: ${iterativeMapTime.toFixed(1)}ms`);
-  console.log(` - iter-index-set - avg: ${iterativeSetTime.toFixed(1)}ms`);
-
-  validateFilterResults([
-    intersectionResult,
-    iterativePojoResult,
-    iterativeColResult,
-    iterativeMapResult,
-    iterativeSetResult,
-  ]);
-};
-
-filterScenarios.forEach((filter) => {
-  runScenario(filter);
-});

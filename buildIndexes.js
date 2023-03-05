@@ -107,10 +107,13 @@ const buildIndexes = (collection, repeats) => {
   const indexSet = buildIndexSet(collection);
 
   return {
-    indexArr,
-    indexPojo,
-    indexMap,
-    indexSet,
+    result: {
+      indexArr,
+      indexPojo,
+      indexMap,
+      indexSet,
+    },
+    time: {},
   };
 };
 
