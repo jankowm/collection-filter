@@ -100,23 +100,9 @@ const buildIndexSet = (collection) => {
   return indexSet;
 };
 
-const buildIndexes = (collection, repeats) => {
-  const indexArr = buildIndexArr(collection);
-  const indexPojo = buildIndexPojo(collection);
-  const indexMap = buildIndexMap(collection);
-  const indexSet = buildIndexSet(collection);
-
-  return {
-    result: {
-      indexArr,
-      indexPojo,
-      indexMap,
-      indexSet,
-    },
-    time: {},
-  };
-};
-
 module.exports = {
-  buildIndexes,
+  buildIndexArr,
+  buildIndexPojo,
+  buildIndexMap,
+  buildIndexSet,
 };
